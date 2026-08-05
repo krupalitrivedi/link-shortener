@@ -1,60 +1,87 @@
-# Link Shortener
+# Link Shortener — Cloudflare Workers branch
 
-A small, complete URL shortener built with **Next.js (App Router)** and **SQLite**.
+A small, complete URL shortener built with **Next.js (App Router)**, deployed to
+**Cloudflare Workers** via OpenNext, with **D1** for storage.
 
 - Paste a long URL and get a short link back (optionally with a custom code).
 - Visiting `/<code>` performs a **server-side redirect** to the original URL.
 - Click counts are incremented **on the server** during that redirect.
 - A dashboard lists every link with its destination, creation date and click count.
 
+> **This branch targets Cloudflare only.** Workers have no filesystem, so storage
+> is D1 rather than a SQLite file, and `lib/db.ts` resolves its database from the
+> `DB` binding. That means `npm run start` (the plain Node server) does **not**
+> work here — use the `main` branch for Node hosts, and this branch for Cloudflare.
+
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22 (see [`.nvmrc`](.nvmrc))
 - npm
+- A Cloudflare account with Workers and D1 enabled
 
 ## Setup
 
 ```bash
 npm install
-cp .env.example .env
 ```
 
-On Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
+Create the database and paste the returned `database_id` into
+[`wrangler.jsonc`](wrangler.jsonc), replacing `REPLACE_WITH_YOUR_D1_DATABASE_ID`:
+
+```bash
+npm run cf-db:create
+```
+
+Then apply the schema:
+
+```bash
+npm run cf-db:migrate
+```
 
 ## Build command
 
 ```bash
-npm run build
+npm run cf-build
 ```
 
-## Start command
+## Deploy command
 
 ```bash
-npm run start
+npm run cf-deploy
 ```
 
-The server listens on port `3000` by default (`npm run start -- -p 8080` to change it).
-For local development with hot reload, use `npm run dev`.
+## Running locally
+
+```bash
+npm run cf-db:migrate:local
+npm run cf-build
+npm run cf-preview
+```
+
+This runs the real `workerd` runtime against a local D1 database in `.wrangler/`,
+so nothing touches your Cloudflare account.
 
 ## Environment variables
 
-| Variable        | Required | Default              | Description                                                                                                       |
-| --------------- | -------- | -------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `APP_NAME`      | No       | `Link Shortener`     | Name shown in the site header and footer, and returned by `/api/health`. Useful for verifying env wiring per host. |
-| `DATABASE_PATH` | No       | `./data/links.db`    | Path to the SQLite database file. Relative paths resolve from the project root. Created automatically if missing.  |
+| Variable        | Where it lives                     | Description                                                                                                       |
+| --------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `APP_NAME`      | `vars` in `wrangler.jsonc`         | Name shown in the site header and footer, and returned by `/api/health`. Useful for verifying env wiring per host. |
+| `DB`            | `d1_databases` in `wrangler.jsonc` | The D1 binding used for all storage. Not a value you set — a binding Cloudflare injects.                          |
 
-Both are also documented in [`.env.example`](.env.example).
+On Workers, `vars` arrive on the `env` object rather than as real process
+environment variables, so `APP_NAME` is read per request in
+[`lib/config.ts`](lib/config.ts) instead of once at module load.
+
+`DATABASE_PATH` is **not used on this branch** — it only applies to the
+filesystem-backed SQLite build on `main`.
 
 Example:
 
-```bash
-APP_NAME="Link Shortener — Staging"
-DATABASE_PATH="/var/data/links.db"
+```jsonc
+"vars": {
+  "APP_NAME": "Link Shortener — Staging"
+}
 ```
-
-The directory containing `DATABASE_PATH` is created on boot, so on hosts with a
-persistent volume just point the variable at a path inside that volume. Without a
-persistent volume the database resets whenever the instance restarts.
 
 ## Routes
 
@@ -88,19 +115,25 @@ app/
   dashboard/page.tsx     links table with click counts
   page.tsx               shortener home page
   layout.tsx             shell (header, footer)
+  not-found.tsx          styled 404
   globals.css            all styling — no external fonts or CDNs
 components/
   Header.tsx             header, renders APP_NAME
   ShortenForm.tsx        client form that posts to /api/links
 lib/
-  config.ts              APP_NAME
-  db.ts                  SQLite connection, schema and queries
-.env.example
+  config.ts              APP_NAME, read per request from the Worker env
+  db.ts                  D1 queries
+migrations/
+  0001_create_links.sql  D1 schema
+open-next.config.ts      OpenNext Cloudflare adapter config
+wrangler.jsonc           Worker name, bindings, vars
+cloudflare-env.d.ts      types for the DB / ASSETS bindings
 ```
 
 ## Notes
 
-- Storage is a single SQLite file via `better-sqlite3`; the schema is created on
-  first connection, so there is no migration step.
+- Storage is Cloudflare D1. The schema lives in `migrations/` and is applied with
+  `wrangler d1 migrations apply`, so there is no create-on-boot step.
+- Every database call is async — D1 has no synchronous API.
 - The redirect route is `force-dynamic` and never cached, so click counts stay accurate.
 - No external fonts, stylesheets or CDN assets are loaded.

@@ -1,6 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
-import fs from "node:fs";
-import path from "node:path";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 export type Link = {
   id: number;
@@ -10,43 +8,29 @@ export type Link = {
   created_at: string;
 };
 
-const DATABASE_PATH = process.env.DATABASE_PATH || "./data/links.db";
-
-// Reuse the connection across hot reloads in development.
-const globalForDb = globalThis as unknown as { __db?: DatabaseSync };
-
-function connect(): DatabaseSync {
-  // turbopackIgnore: the DB path is runtime configuration, not a bundled asset.
-  const file = path.resolve(/* turbopackIgnore: true */ process.cwd(), DATABASE_PATH);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-
-  const db = new DatabaseSync(file);
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS links (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      slug       TEXT NOT NULL UNIQUE,
-      url        TEXT NOT NULL,
-      clicks     INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+/**
+ * The D1 binding declared in wrangler.jsonc.
+ * Every query below is async — D1 has no synchronous API.
+ */
+async function getDb(): Promise<D1Database> {
+  const { env } = await getCloudflareContext({ async: true });
+  if (!env.DB) {
+    throw new Error(
+      "The D1 binding `DB` is missing. Check d1_databases in wrangler.jsonc."
     );
-    CREATE INDEX IF NOT EXISTS idx_links_slug ON links (slug);
-  `);
-  return db;
-}
-
-export function getDb(): DatabaseSync {
-  if (!globalForDb.__db) globalForDb.__db = connect();
-  return globalForDb.__db;
+  }
+  return env.DB;
 }
 
 // Lowercase, no look-alike characters (l/o/0/1).
 const ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
 
 function randomSlug(length = 6): string {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
   let out = "";
   for (let i = 0; i < length; i++) {
-    out += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    out += ALPHABET[bytes[i] % ALPHABET.length];
   }
   return out;
 }
@@ -71,59 +55,72 @@ export function isValidSlug(slug: string): boolean {
 // Slugs that would collide with real routes.
 const RESERVED = new Set(["api", "dashboard", "_next", "favicon.ico"]);
 
-export function createLink(url: string, customSlug?: string): Link {
-  const db = getDb();
-  const insert = db.prepare(
-    "INSERT INTO links (slug, url) VALUES (?, ?) RETURNING *"
-  );
+export async function createLink(
+  url: string,
+  customSlug?: string
+): Promise<Link> {
+  const db = await getDb();
+  const sql = "INSERT INTO links (slug, url) VALUES (?, ?) RETURNING *";
 
   if (customSlug) {
     if (RESERVED.has(customSlug.toLowerCase())) {
       throw new Error("That short code is reserved. Try another one.");
     }
-    if (getLink(customSlug)) {
+    if (await getLink(customSlug)) {
       throw new Error("That short code is already taken.");
     }
-    return insert.get(customSlug, url) as unknown as Link;
+    const row = await db.prepare(sql).bind(customSlug, url).first<Link>();
+    if (!row) throw new Error("Could not create the link.");
+    return row;
   }
 
   for (let attempt = 0; attempt < 10; attempt++) {
     const slug = randomSlug();
-    if (RESERVED.has(slug) || getLink(slug)) continue;
-    return insert.get(slug, url) as unknown as Link;
+    if (RESERVED.has(slug) || (await getLink(slug))) continue;
+    const row = await db.prepare(sql).bind(slug, url).first<Link>();
+    if (row) return row;
   }
   throw new Error("Could not generate a unique short code. Please retry.");
 }
 
-export function getLink(slug: string): Link | undefined {
-  return getDb().prepare("SELECT * FROM links WHERE slug = ?").get(slug) as
-    | unknown as Link
-    | undefined;
+export async function getLink(slug: string): Promise<Link | null> {
+  const db = await getDb();
+  return db
+    .prepare("SELECT * FROM links WHERE slug = ?")
+    .bind(slug)
+    .first<Link>();
 }
 
-export function listLinks(): Link[] {
-  return getDb()
+export async function listLinks(): Promise<Link[]> {
+  const db = await getDb();
+  const { results } = await db
     .prepare("SELECT * FROM links ORDER BY id DESC")
-    .all() as unknown as Link[];
+    .all<Link>();
+  return results ?? [];
 }
 
 /** Increments the click counter and returns the target URL, or null if unknown. */
-export function recordClick(slug: string): string | null {
-  const row = getDb()
+export async function recordClick(slug: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db
     .prepare("UPDATE links SET clicks = clicks + 1 WHERE slug = ? RETURNING url")
-    .get(slug) as unknown as { url: string } | undefined;
+    .bind(slug)
+    .first<{ url: string }>();
   return row?.url ?? null;
 }
 
-export function countLinks(): number {
-  const row = getDb().prepare("SELECT COUNT(*) AS n FROM links").get() as
-    unknown as { n: number };
-  return row.n;
+export async function countLinks(): Promise<number> {
+  const db = await getDb();
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM links")
+    .first<{ n: number }>();
+  return row?.n ?? 0;
 }
 
-export function totalClicks(): number {
-  const row = getDb()
+export async function totalClicks(): Promise<number> {
+  const db = await getDb();
+  const row = await db
     .prepare("SELECT COALESCE(SUM(clicks), 0) AS n FROM links")
-    .get() as unknown as { n: number };
-  return row.n;
+    .first<{ n: number }>();
+  return row?.n ?? 0;
 }

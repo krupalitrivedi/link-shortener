@@ -9,7 +9,15 @@
     "binding": "ASSETS"
   },
   "vars": {
-    "APP_NAME": "Link Shortener",
-    "DATABASE_PATH": "/tmp/links.db"
-  }
+    "APP_NAME": "Link Shortener"
+  },
+  // Run `npm run cf-db:create` and paste the returned id below.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "link-shortener",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
 }

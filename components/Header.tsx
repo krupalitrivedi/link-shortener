@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { APP_NAME } from "@/lib/config";
+import { getAppName } from "@/lib/config";
 
-export default function Header() {
+export default async function Header() {
+  const appName = await getAppName();
+
   return (
     <header className="header">
       <div className="header-inner">
@@ -21,7 +23,7 @@ export default function Header() {
             </svg>
           </span>
           {/* APP_NAME comes from the environment — see README */}
-          <span>{APP_NAME}</span>
+          <span>{appName}</span>
         </Link>
         <nav className="nav">
           <Link href="/">Shorten</Link>

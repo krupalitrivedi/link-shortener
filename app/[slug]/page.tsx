@@ -15,7 +15,7 @@ export default async function SlugPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const target = recordClick(slug);
+  const target = await recordClick(slug);
 
   if (!target) notFound();
 

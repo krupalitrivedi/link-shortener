@@ -18,7 +18,7 @@ function formatDate(value: string) {
 }
 
 export default async function DashboardPage() {
-  const links = listLinks();
+  const links = await listLinks();
   const clicks = links.reduce((sum, link) => sum + link.clicks, 0);
 
   const host = (await headers()).get("host") ?? "localhost:3000";

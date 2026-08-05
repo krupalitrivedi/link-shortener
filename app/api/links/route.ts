@@ -4,7 +4,7 @@ import { createLink, isValidSlug, listLinks, normalizeUrl } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ links: listLinks() });
+  return NextResponse.json({ links: await listLinks() });
 }
 
 export async function POST(request: Request) {
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const link = createLink(url, slug);
+    const link = await createLink(url, slug);
     return NextResponse.json(link, { status: 201 });
   } catch (error) {
     const message =

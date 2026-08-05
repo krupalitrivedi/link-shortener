@@ -4,9 +4,8 @@ import { countLinks, totalClicks } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default function HomePage() {
-  const links = countLinks();
-  const clicks = totalClicks();
+export default async function HomePage() {
+  const [links, clicks] = await Promise.all([countLinks(), totalClicks()]);
 
   return (
     <div className="container">

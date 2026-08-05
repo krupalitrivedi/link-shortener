@@ -4,6 +4,8 @@ import { useState } from "react";
 
 type Created = { slug: string; url: string; shortUrl: string };
 
+type ApiResponse = { slug?: string; url?: string; error?: string };
+
 export default function ShortenForm() {
   const [url, setUrl] = useState("");
   const [slug, setSlug] = useState("");
@@ -24,8 +26,8 @@ export default function ShortenForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, slug: slug.trim() || undefined }),
       });
-      const data = await res.json();
-      if (!res.ok) {
+      const data = (await res.json()) as ApiResponse;
+      if (!res.ok || !data.slug || !data.url) {
         setError(data.error ?? "Something went wrong.");
         setCreated(null);
         return;

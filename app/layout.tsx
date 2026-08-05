@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Header from "@/components/Header";
-import { APP_NAME } from "@/lib/config";
+import { getAppName } from "@/lib/config";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: APP_NAME,
-  description: "Turn long URLs into short, shareable links.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: await getAppName(),
+    description: "Turn long URLs into short, shareable links.",
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const appName = await getAppName();
+
   return (
     <html lang="en">
       <body>
@@ -22,7 +26,7 @@ export default function RootLayout({
           <main className="main">{children}</main>
           <footer className="footer">
             <div className="footer-inner">
-              <span>{APP_NAME}</span>
+              <span>{appName}</span>
               <Link href="/api/health">Health</Link>
             </div>
           </footer>
