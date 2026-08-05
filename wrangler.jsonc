@@ -11,12 +11,12 @@
   "vars": {
     "APP_NAME": "Link Shortener"
   },
-  // Run `npm run cf-db:create` and paste the returned id below.
+  // The binding name must stay `DB` — lib/db.ts reads env.DB.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "link-shortener",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "database_id": "9314e457-bdc1-498b-8fc3-e06c4e85ca34",
       "migrations_dir": "migrations"
     }
   ]
